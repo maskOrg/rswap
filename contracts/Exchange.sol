@@ -9,8 +9,24 @@ contract Exchange {
     }
 
     function addLiquidity(uint256 _tokenAmount) public payable {
-        IERC20 token = IERC20(tokenAddress);
-        token.transferFrom(msg.sender, address(this), _tokenAmount);
+        if(getReserve() == 0) {
+            IERC20 token = IERC20(tokenAddress);
+            token.transferFrom(msg.sender, address(this), _tokenAmount);
+        } else {
+            uint256 tokenReserve = getReserve();
+            uint256 ethReserve = address(this).balance - msg.value;
+            uint256 tokenAmount = (msg.value * tokenReserve) / ethReserve;
+            // 目标：让用户添加 LP 时，TOKEN 价格不会降低
+            // This will preserve a price when liquidity is added to a pool.
+            // 例如原有 1000 ETH = 2000 TOKEN
+            // 用户添加了 500 个 ETH 和 t 个 TOKEN，则按照原来的比例
+            // t 必须 >= (500*2000)/1000 = 1000
+            // 否则 revert 操作
+            require(_tokenAmount >= tokenAmount, "insufficient token amount");
+            
+            IERC20 token = IERC20(tokenAddress);
+            token.transferFrom(msg.sender, address(this), _tokenAmount); 
+        }
     }
 
     function getReserve() public view returns(uint256) {
