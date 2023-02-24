@@ -1,17 +1,23 @@
 pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract Exchange {
+contract Exchange is ERC20 {
     address public tokenAddress;
-    constructor (address _token) {
+    constructor (address _token) ERC20("rswap-V1", "RUNE-V1") {
         require(_token != address(0), "no zero address");
         tokenAddress = _token;
     }
 
-    function addLiquidity(uint256 _tokenAmount) public payable {
+    function addLiquidity(uint256 _tokenAmount) public payable returns(uint256) {
         if(getReserve() == 0) {
             IERC20 token = IERC20(tokenAddress);
             token.transferFrom(msg.sender, address(this), _tokenAmount);
+
+            uint256 liquidity = address(this).balance;
+            _mint(msg.sender, liquidity);
+
+            return liquidity;
         } else {
             uint256 tokenReserve = getReserve();
             uint256 ethReserve = address(this).balance - msg.value;
@@ -26,6 +32,11 @@ contract Exchange {
             
             IERC20 token = IERC20(tokenAddress);
             token.transferFrom(msg.sender, address(this), _tokenAmount); 
+
+            uint256 liquidity = (totalSupply() * msg.value) / ethReserve;
+            _mint(msg.sender, liquidity);
+
+            return liquidity;
         }
     }
 
