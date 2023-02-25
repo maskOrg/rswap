@@ -1,16 +1,43 @@
 pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract Exchange {
+contract Exchange is ERC20 {
     address public tokenAddress;
-    constructor (address _token) {
+    constructor (address _token) ERC20("rswap-V1", "RUNE-V1") {
         require(_token != address(0), "no zero address");
         tokenAddress = _token;
     }
 
-    function addLiquidity(uint256 _tokenAmount) public payable {
-        IERC20 token = IERC20(tokenAddress);
-        token.transferFrom(msg.sender, address(this), _tokenAmount);
+    function addLiquidity(uint256 _tokenAmount) public payable returns(uint256) {
+        if(getReserve() == 0) {
+            IERC20 token = IERC20(tokenAddress);
+            token.transferFrom(msg.sender, address(this), _tokenAmount);
+
+            uint256 liquidity = address(this).balance;
+            _mint(msg.sender, liquidity);
+
+            return liquidity;
+        } else {
+            uint256 tokenReserve = getReserve();
+            uint256 ethReserve = address(this).balance - msg.value;
+            uint256 tokenAmount = (msg.value * tokenReserve) / ethReserve;
+            // 目标：让用户添加 LP 时，TOKEN 价格不会降低
+            // This will preserve a price when liquidity is added to a pool.
+            // 例如原有 1000 ETH = 2000 TOKEN
+            // 用户添加了 500 个 ETH 和 t 个 TOKEN，则按照原来的比例
+            // t 必须 >= (500*2000)/1000 = 1000
+            // 否则 revert 操作
+            require(_tokenAmount >= tokenAmount, "insufficient token amount");
+            
+            IERC20 token = IERC20(tokenAddress);
+            token.transferFrom(msg.sender, address(this), _tokenAmount); 
+
+            uint256 liquidity = (totalSupply() * msg.value) / ethReserve;
+            _mint(msg.sender, liquidity);
+
+            return liquidity;
+        }
     }
 
     function getReserve() public view returns(uint256) {
@@ -27,7 +54,13 @@ contract Exchange {
         uint256 outputReserve // 减少的一方的储备 (y)
     ) private pure returns (uint256) {
         require(inputReserve > 0 && outputReserve > 0, "invalid reserves");
-        return (inputAmount * outputReserve) / (inputReserve + inputAmount); // 减少的东西 (dy)
+        // UPDATE: 添加手续费 1%，为避开浮点数运算，分子分母同时扩大100倍
+        uint256 inputAmountWithFee = inputAmount * 99;
+        uint256 numerator = inputAmountWithFee * outputReserve;
+        // return (inputAmount * outputReserve) / (inputReserve + inputAmount); // 减少的东西 (dy)
+        uint256 denominator = (inputReserve * 100) + inputAmountWithFee;
+
+        return numerator / denominator;
     }
 
     function getTokenAmount(uint256 _ethSold) public view returns(uint256) { // 用 ETH 买到多少 token
@@ -67,5 +100,18 @@ contract Exchange {
         require(ethBought >= _minEth, "insufficient output amount");
         IERC20(tokenAddress).transferFrom(msg.sender, address(this), _tokensSold);
         payable(msg.sender).transfer(ethBought); // "send" and "transfer" are only available for objects of type "address payable"
+    }
+
+    function removeLiquidity(uint256 _amount) public returns(uint256, uint256) {
+        require(_amount > 0, "invalid amount");
+
+        uint256 ethAmount = (address(this).balance * _amount) / totalSupply();
+        uint256 tokenAmount = (getReserve() * _amount) / totalSupply();
+
+        _burn(msg.sender, _amount);
+        payable(msg.sender).transfer(ethAmount);
+        IERC20(tokenAddress).transfer(msg.sender, tokenAmount);
+        
+        return (ethAmount, tokenAmount);
     }
 }
