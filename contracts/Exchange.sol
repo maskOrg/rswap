@@ -4,9 +4,12 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract Exchange is ERC20 {
     address public tokenAddress;
+    address public factoryAddress;
+
     constructor (address _token) ERC20("rswap-V1", "RUNE-V1") {
         require(_token != address(0), "no zero address");
         tokenAddress = _token;
+        factoryAddress = msg.sender;
     }
 
     function addLiquidity(uint256 _tokenAmount) public payable returns(uint256) {
