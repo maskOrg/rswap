@@ -2,6 +2,14 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
+interface IExchange {
+    function ethToTokenSwap(uint256 _mintTokens) external payable;
+}
+
+interface IFactory {
+    function getExchange(address _tokenAddress) external returns(address);
+}
+
 contract Exchange is ERC20 {
     address public tokenAddress;
     address public factoryAddress;
@@ -105,6 +113,14 @@ contract Exchange is ERC20 {
         payable(msg.sender).transfer(ethBought); // "send" and "transfer" are only available for objects of type "address payable"
     }
 
+    function tokenToTokenSwap(uint256 _token1Sold, address _token2Address, uint256 _minToken2Bought) public {
+        address exchange2Address = IFactory(factoryAddress).getExchange(_token2Address);
+        require(exchange2Address != address(this) && exchange2Address != address(0), "invalid exchange address"); // 不能和自己交换；不能换到一个还未创建交易对的代币
+        uint256 tokenReserve = getReserve();
+        uint256 ethBought = getAmount(_token1Sold, tokenReserve, address(this).balance);
+        IERC20(tokenAddress).transferFrom(msg.sender, address(this), _token1Sold);
+        IExchange(exchange2Address).ethToTokenSwap{value: ethBought}(_minToken2Bought);
+    }
     function removeLiquidity(uint256 _amount) public returns(uint256, uint256) {
         require(_amount > 0, "invalid amount");
 
