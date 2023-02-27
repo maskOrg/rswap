@@ -3,7 +3,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 interface IExchange {
-    function ethToTokenSwap(uint256 _mintTokens) external payable;
+    function ethToTokenSwap(uint256 _minTokens) external payable;
+    function ethToTokenTransfer(uint256 _minTokens, address _recipient) external payable;
 }
 
 interface IFactory {
@@ -87,7 +88,7 @@ contract Exchange is ERC20 {
         return getAmount(_tokenSold, tokenReserve, address(this).balance);
     }
 
-    function ethToTokenSwap(uint256 _minTokens) public payable { // _minTokens: 用户可以接受换来的最少的 token
+    function ethToToken(uint256 _minTokens, address recipient) private { // _minTokens: 用户可以接受换来的最少的 token
         uint256 tokenReserve = getReserve();
         uint256 tokensBought = getAmount(
             msg.value,
@@ -96,7 +97,15 @@ contract Exchange is ERC20 {
         );
         require(tokensBought >= _minTokens, "insufficient output amount");
 
-        IERC20(tokenAddress).transfer(msg.sender, tokensBought);
+        IERC20(tokenAddress).transfer(recipient, tokensBought);
+    }
+
+    function ethToTokenSwap(uint256 _minTokens) public payable {
+        ethToToken(_minTokens, msg.sender);
+    }
+
+    function ethToTokenTransfer(uint256 _minTokens, address _recipient) public payable {
+        ethToToken(_minTokens, _recipient);
     }
 
     function tokenToEthSwap(uint256 _tokensSold, uint256 _minEth) public {
@@ -119,7 +128,7 @@ contract Exchange is ERC20 {
         uint256 tokenReserve = getReserve();
         uint256 ethBought = getAmount(_token1Sold, tokenReserve, address(this).balance);
         IERC20(tokenAddress).transferFrom(msg.sender, address(this), _token1Sold);
-        IExchange(exchange2Address).ethToTokenSwap{value: ethBought}(_minToken2Bought);
+        IExchange(exchange2Address).ethToTokenTransfer{value: ethBought}(_minToken2Bought, msg.sender);
     }
     function removeLiquidity(uint256 _amount) public returns(uint256, uint256) {
         require(_amount > 0, "invalid amount");
